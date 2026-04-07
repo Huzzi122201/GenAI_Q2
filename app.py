@@ -276,9 +276,21 @@ with col2:
             st.markdown("---")
             st.markdown("### 🔍 Compare Original vs Generated")
             
-            # Resize original to match output if needed
+            # Resize and normalize both images to RGB to avoid shape mismatch in hstack.
             original_display = cv2.resize(input_image, (256, 256))
-            comparison = np.hstack([original_display, st.session_state['generated_image']])
+            generated_display = st.session_state['generated_image']
+
+            if len(original_display.shape) == 2:
+                original_display = cv2.cvtColor(original_display, cv2.COLOR_GRAY2RGB)
+            elif original_display.shape[2] == 4:
+                original_display = cv2.cvtColor(original_display, cv2.COLOR_RGBA2RGB)
+
+            if len(generated_display.shape) == 2:
+                generated_display = cv2.cvtColor(generated_display, cv2.COLOR_GRAY2RGB)
+            elif generated_display.shape[2] == 4:
+                generated_display = cv2.cvtColor(generated_display, cv2.COLOR_RGBA2RGB)
+
+            comparison = np.hstack([original_display, generated_display])
             st.image(comparison, caption="Original Sketch | Generated Color", use_container_width=True)
     else:
         # Placeholder
