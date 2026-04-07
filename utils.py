@@ -2,6 +2,47 @@ import torch
 import numpy as np
 from PIL import Image
 import cv2
+import re
+
+
+def _extract_state_dict(checkpoint):
+    """Return the actual state_dict from common checkpoint formats."""
+    if isinstance(checkpoint, dict):
+        for key in (
+            'gen_state_dict',
+            'model_state_dict',
+            'state_dict',
+            'generator_state_dict',
+            'generator',
+        ):
+            if key in checkpoint and isinstance(checkpoint[key], dict):
+                return checkpoint[key]
+    return checkpoint
+
+
+def _remap_generator_keys(state_dict):
+    """Map older training key names to the inference GeneratorUNet key names."""
+    remapped = {}
+
+    for key, value in state_dict.items():
+        new_key = key
+
+        # Remove common wrappers from DataParallel or nested modules.
+        for prefix in ('module.', 'generator.', 'netG.'):
+            if new_key.startswith(prefix):
+                new_key = new_key[len(prefix):]
+
+        # Map encoder/decoder naming to current model naming.
+        new_key = re.sub(r'^enc([1-7])\.block\.', r'down\1.model.', new_key)
+        new_key = re.sub(r'^dec([1-7])\.block\.', r'up\1.model.', new_key)
+
+        # Keep bottleneck/final names aligned in case wrapped prefixes were removed.
+        new_key = re.sub(r'^bottleneck\.', 'bottleneck.', new_key)
+        new_key = re.sub(r'^final\.', 'final.', new_key)
+
+        remapped[new_key] = value
+
+    return remapped
 
 def load_model(model_path, device='cpu'):
     """
@@ -13,14 +54,23 @@ def load_model(model_path, device='cpu'):
     
     # Load checkpoint
     checkpoint = torch.load(model_path, map_location=device)
-    
-    # Handle different checkpoint formats
-    if 'gen_state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['gen_state_dict'])
-    elif 'model_state_dict' in checkpoint:
-        model.load_state_dict(checkpoint['model_state_dict'])
-    else:
-        model.load_state_dict(checkpoint)
+    state_dict = _extract_state_dict(checkpoint)
+
+    # First try direct load for native checkpoints.
+    try:
+        model.load_state_dict(state_dict)
+    except RuntimeError:
+        # Fallback for checkpoints trained with older naming conventions.
+        remapped_state_dict = _remap_generator_keys(state_dict)
+        missing_keys, unexpected_keys = model.load_state_dict(remapped_state_dict, strict=False)
+
+        # If remapping still fails badly, raise a clear error for debugging.
+        if len(missing_keys) > 10:
+            raise RuntimeError(
+                "Checkpoint is incompatible with current GeneratorUNet architecture. "
+                f"Missing keys: {missing_keys[:10]}... "
+                f"Unexpected keys: {unexpected_keys[:10]}..."
+            )
     
     model = model.to(device)
     model.eval()
