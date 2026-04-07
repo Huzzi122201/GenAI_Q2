@@ -64,8 +64,18 @@ def load_model(model_path, device='cpu'):
         remapped_state_dict = _remap_generator_keys(state_dict)
         missing_keys, unexpected_keys = model.load_state_dict(remapped_state_dict, strict=False)
 
-        # If remapping still fails badly, raise a clear error for debugging.
-        if len(missing_keys) > 10:
+        # Some training configs use bias=False for conv/transposed-conv layers,
+        # so checkpoints may legitimately miss only bias tensors.
+        only_bias_missing = all(k.endswith('.bias') for k in missing_keys)
+        if only_bias_missing and missing_keys:
+            named_params = dict(model.named_parameters())
+            for key in missing_keys:
+                if key in named_params:
+                    with torch.no_grad():
+                        named_params[key].zero_()
+
+        # If keys other than biases are missing, surface a clear incompatibility error.
+        if unexpected_keys or (missing_keys and not only_bias_missing):
             raise RuntimeError(
                 "Checkpoint is incompatible with current GeneratorUNet architecture. "
                 f"Missing keys: {missing_keys[:10]}... "
