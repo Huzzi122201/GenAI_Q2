@@ -60,7 +60,7 @@ with st.sidebar:
     # Model selection
     model_path = st.text_input(
         "Model Path",
-        value="models/generator_final.pth",
+        value="models/best_generator.pth",
         help="Path to your trained .pth file"
     )
     
