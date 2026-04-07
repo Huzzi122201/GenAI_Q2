@@ -4,7 +4,7 @@ import torch.nn as nn
 class UNetDownBlock(nn.Module):
     def __init__(self, in_channels, out_channels, normalize=True, dropout=0.0):
         super().__init__()
-        layers = [nn.Conv2d(in_channels, out_channels, 4, stride=2, padding=1)]
+        layers = [nn.Conv2d(in_channels, out_channels, 4, stride=2, padding=1, bias=False)]
         if normalize:
             layers.append(nn.BatchNorm2d(out_channels))
         layers.append(nn.LeakyReLU(0.2))
@@ -20,7 +20,7 @@ class UNetUpBlock(nn.Module):
     def __init__(self, in_channels, out_channels, dropout=0.0):
         super().__init__()
         layers = [
-            nn.ConvTranspose2d(in_channels, out_channels, 4, stride=2, padding=1),
+            nn.ConvTranspose2d(in_channels, out_channels, 4, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU()
         ]
